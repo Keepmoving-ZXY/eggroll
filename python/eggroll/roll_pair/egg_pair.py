@@ -81,6 +81,7 @@ class EggPair(object):
             raise ValueError(f"input key-value serdes:{(input_key_serdes, input_value_serdes)}"
                              f"differ from output key-value serdes:{(output_key_serdes, output_value_serdes)}")
 
+        ##### [MAP] Step 3: shuffle is True, enter if branch.
         if shuffle:
             from eggroll.roll_pair.transfer_pair import TransferPair
             input_total_partitions = input_store_head._store_locator._total_partitions
@@ -94,6 +95,9 @@ class EggPair(object):
                      and my_server_node_id != task._outputs[0]._processor._server_node_id):
                 store_future = None
             else:
+                #### [MAP] Step 4: start a thread to receive k,v from 
+                #### grpc server, and store them to local db. grpc server
+                #### will receive k,v from other egg.
                 store_future = shuffler.store_broker(
                         store_partition=task._outputs[0],
                         is_shuffle=True,
@@ -108,10 +112,19 @@ class EggPair(object):
                 shuffle_broker = FifoBroker()
                 write_bb = BatchBroker(shuffle_broker)
                 try:
+                    #### [MAP] Step 5: start a thread to scatter processed k,v to 
+                    ####  other eggs. why called processed k,v ? see step 6.
                     scatter_future = shuffler.scatter(
                             input_broker=shuffle_broker,
                             partition_function=partitioner(hash_func=hash_code, total_partitions=output_total_partitions),
                             output_store=output_store)
+                    
+                    #### [MAP] Step 6: iterate k,v from input, then process 
+                    #### it, finally put them into broker. 'func' there is 
+                    #### 'map_wrapper' in code below 'elif task._name == 'map':'.
+                    #### Notice 'map_wrapper' put all processed k,v into a broker 
+                    #### called 'write_bb', and the 'write_bb' can be think of as 
+                    #### 'shuffle_broker'in Step 5. 
                     with create_adapter(task._inputs[0]) as input_db, \
                         input_db.iteritems() as rb:
                         func(rb, input_key_serdes, input_value_serdes, write_bb)
@@ -204,6 +217,7 @@ class EggPair(object):
             PutBatchTask(tag, partition).run()
 
         elif task._name == 'putAll':
+            #### [EGG] Step 1: start save to db thread.
             output_partition = task._outputs[0]
             tag = f'{task._id}'
             L.trace(f'egg_pair putAll: transfer service tag={tag}')
@@ -267,10 +281,13 @@ class EggPair(object):
         elif task._name == 'map':
             f = create_functor(functors[0]._body)
 
+            #### [MAP] Step 1: define a function, running actual compute.
             def map_wrapper(input_iterator, key_serdes, value_serdes, shuffle_broker):
                 for k_bytes, v_bytes in input_iterator:
                     k1, v1 = f(key_serdes.deserialize(k_bytes), value_serdes.deserialize(v_bytes))
                     shuffle_broker.put((key_serdes.serialize(k1), value_serdes.serialize(v1)))
+
+            #### [MAP] Step 2: actual run 'map' process logical.
             self._run_unary(map_wrapper, task, shuffle=True)
 
         elif task._name == 'reduce':

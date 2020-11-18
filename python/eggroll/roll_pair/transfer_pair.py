@@ -245,6 +245,12 @@ class TransferPair(object):
             done_cnt = 0
             tag = self.__generate_tag(store_partition_inner._id) if is_shuffle_inner else self.__transfer_id
             try:
+                #### [EGG] Step 1.1: find or create a broker, this 
+                ####  broker should be operated by two thread:
+                ####  1. thread running do_store;
+                ####  2. thread running GrpcTransferServicer.send;
+                ####  The GrpcTransferServicer.send put received k,v into 
+                ####  broker, and this function get k,v from broker.
                 broker = TransferService.get_or_create_broker(tag, write_signals=total_writers_inner)
                 L.trace(f"do_store start for tag={tag}")
                 batches = TransferPair.bin_batch_to_pair(b.data for b in broker)
@@ -257,6 +263,7 @@ class TransferPair(object):
                 else:
                     merger = None
 
+                #### [EGG] Step 1.2: open db, and insert received k,v into it. 
                 with create_adapter(store_partition_inner) as db:
                     L.trace(f"do_store create_db for tag={tag} for partition={store_partition_inner}")
                     with db.new_batch() as wb:
@@ -273,6 +280,8 @@ class TransferPair(object):
             finally:
                 TransferService.remove_broker(tag)
             return done_cnt
+        
+        #### [EGG] Step 1: start a thread running post recv steps.
         return self._executor_pool.submit(do_store, store_partition, is_shuffle, total_writers, reduce_op)
 
     def gather(self, store):
