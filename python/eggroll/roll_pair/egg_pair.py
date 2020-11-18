@@ -113,18 +113,17 @@ class EggPair(object):
                 write_bb = BatchBroker(shuffle_broker)
                 try:
                     #### [MAP] Step 5: start a thread to scatter processed k,v to 
-                    ####  other eggs. why called processed k,v ? see step 6.
+                    ####  other eggs. Why called processed k,v ? see step 6.
                     scatter_future = shuffler.scatter(
                             input_broker=shuffle_broker,
                             partition_function=partitioner(hash_func=hash_code, total_partitions=output_total_partitions),
                             output_store=output_store)
                     
                     #### [MAP] Step 6: iterate k,v from input, then process 
-                    #### it, finally put them into broker. 'func' there is 
-                    #### 'map_wrapper' in code below 'elif task._name == 'map':'.
-                    #### Notice 'map_wrapper' put all processed k,v into a broker 
-                    #### called 'write_bb', and the 'write_bb' can be think of as 
-                    #### 'shuffle_broker'in Step 5. 
+                    #### it, finally put them into broker. 'func' is 'map_wrapper' 
+                    #### function. Notice 'map_wrapper' put all processed k,v into 
+                    ####  a broker called 'write_bb', and the 'write_bb' is the same 
+                    ####  as 'shuffle_broker' in Step 5. 
                     with create_adapter(task._inputs[0]) as input_db, \
                         input_db.iteritems() as rb:
                         func(rb, input_key_serdes, input_value_serdes, write_bb)
