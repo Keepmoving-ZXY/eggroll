@@ -149,9 +149,18 @@ class TestRollPairBase(unittest.TestCase):
         rp = self.ctx.parallelize(self.str_generator(row_limit=11))
         self.assertEqual(11, rp.count())
 
+    #### [ROLL] Step 2.0:
+    #### Run A EggRoll Task.
     def test_put_all(self):
+        #### Task in EggRoll:
         rp = self.ctx.load("ns12020","n1", options=self.store_opts())
         data = [("k1","v1"),("k2","v2"),("k3","v3"),("k4","v4"),("k5","v5"),("k6","v6")]
+        #### putAll in EggRoll means scatter data to all processors,putAll's 
+        #### implement occurs two code file:roll_pair.py and egg_pair.py.
+        #### Q1: what's processors? 
+        #### Q2: what does scatter means?
+
+        #### Run into code in roll_pair.py. 
         rp.put_all(data)
         self.assertUnOrderListEqual(data, rp.get_all())
 
@@ -720,6 +729,9 @@ class TestRollPairCluster(TestRollPairBase):
     def setUpClass(cls) -> None:
         opts = {"eggroll.session.processors.per.node": "3"}
         #opts = {}
+
+        # [Roll] Step 1:
+        # Create session, and RollPairContext. 
         cls.ctx = get_cluster_context(options=opts)
 
     def setUp(self):

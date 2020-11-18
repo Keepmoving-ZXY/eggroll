@@ -577,8 +577,15 @@ class RollPair(object):
             yield self.key_serdes.deserialize(k), self.value_serdes.deserialize(v)
         L.trace(f"get_all: namespace={self.get_namespace()} name={self.get_name()}, count={done_cnt}")
 
+    #### [Roll] Step 2.1
+    #### Implement of put_all in Roll, and also has a implement in Egg.
     @_method_profile_logger
     def put_all(self, items, output=None, options: dict = None):
+        #### [ROLL] Step 2.1.1 start 
+        ####
+        #### This will issue a grpc request, letting 
+        #### processors run the code of 'put_all'.``
+        ####
         if options is None:
             options = {}
         include_key = options.get("include_key", True)
@@ -597,12 +604,23 @@ class RollPair(object):
             return self.__get_output_from_result(task_results)
         th = Thread(target=send_command, name=f'roll_pair-send_command-{job_id}')
         th.start()
+        #### [ROLL] Step 2.1.1 end
+
+        #### [ROLL] Step 2.1.2 start
+        ####
+        #### This will send unique part of k,v in items to a processor. 
+        ####
         populated_store = self.ctx.populate_processor(self.__store)
         shuffler = TransferPair(job_id)
         fifo_broker = FifoBroker()
         bb = BatchBroker(fifo_broker)
-        scatter_future = shuffler.scatter(fifo_broker, self.partitioner, populated_store)
 
+        #### [ROLL] Step 2.1.2.1 run into implement of scatter.
+        scatter_future = shuffler.scatter(fifo_broker, self.partitioner, populated_store)
+        #### [ROLL] Step 2.1.2.1 end
+
+        #### [ROLL] Step 2.1.2.2 start,
+        #### put all k,v into Step 2.1.2.1
         key_serdes = self.key_serdes
         value_serdes = self.value_serdes
         try:
@@ -616,10 +634,13 @@ class RollPair(object):
                     k += 1
         finally:
             bb.signal_write_finish()
+        #### [ROLL] Step 2.1.2.2 end
 
         scatter_results = scatter_future.result()
         th.join()
         return RollPair(populated_store, self.ctx)
+
+        #### [ROLL]: Step 2.1.2 end
 
     @_method_profile_logger
     def count(self):

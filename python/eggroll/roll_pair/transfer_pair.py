@@ -115,15 +115,19 @@ class TransferPair(object):
     def __generate_tag(self, partition_id):
         return generate_task_id(job_id=self.__transfer_id, partition_id=partition_id)
 
+    #### [ROLL] detail of Step 2.1.2.1.
     @_exception_logger
     def scatter(self, input_broker, partition_function, output_store):
         output_partitions = output_store._partitions
         total_partitions = len(output_partitions)
         L.trace(f'scatter starts for transfer_id={self.__transfer_id}, total_partitions={total_partitions}, output_store={output_store}')
+        ####[ROLL] Step 2.1.2.1.1 setup a broker for every partition.
         partitioned_brokers = [FifoBroker() for i in range(total_partitions)]
         partitioned_bb = [BatchBroker(v) for v in partitioned_brokers]
         futures = []
 
+        #### [ROLL] Step 2.1.2.1.2: this function put a unique k,v to one of 
+        #### broker created at Step 2.1.2.1.2 according to partition_function.
         @_exception_logger
         def do_partition():
             L.trace(f'do_partition start for transfer_id={self.__transfer_id}')
@@ -137,9 +141,14 @@ class TransferPair(object):
                     f"total partitions={total_partitions}, "
                     f"cur done partition count={done_count}")
             return done_count
+
+        #### [ROLL] notice 'do_partition' function run in a thread.
         futures.append(self._executor_pool.submit(do_partition))
         client = TransferClient()
 
+        #### [ROLL] Step 2.1.2.1.3: this function will issue a grpc 
+        #### request sending k,v in a broker to a destionation. 
+        #### what's destination means? it processors.
         def do_send_all():
             send_all_futs = []
             for i, part in enumerate(output_partitions):
@@ -153,8 +162,12 @@ class TransferPair(object):
                 send_all_futs.append(fut)
             return CompositeFuture(send_all_futs).result()
 
+        #### [ROLL] notice 'do_send_all' function run in a thread.
         futures.append(self._executor_pool.submit(do_send_all))
         return CompositeFuture(futures)
+
+    #### [ROLL] this function launch only launch two thread then return.
+    #### [ROLL] Step 2.1.2.1 detail end.
 
     @staticmethod
     @_exception_logger
